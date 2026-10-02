@@ -280,6 +280,7 @@ pub struct OutlineRenderActor {
     signal: broadcast::Receiver<RenderActorRequest>,
     document: Arc<parking_lot::RwLock<Option<Arc<dyn CompileView>>>>,
     editor_tx: mpsc::UnboundedSender<EditorActorRequest>,
+    webview_sender: mpsc::UnboundedSender<Vec<u8>>,
 
     span_interner: SpanInterner,
 }
@@ -289,12 +290,14 @@ impl OutlineRenderActor {
         signal: broadcast::Receiver<RenderActorRequest>,
         document: Arc<parking_lot::RwLock<Option<Arc<dyn CompileView>>>>,
         editor_tx: mpsc::UnboundedSender<EditorActorRequest>,
+        webview_sender: mpsc::UnboundedSender<Vec<u8>>,
         span_interner: SpanInterner,
     ) -> Self {
         Self {
             signal,
             document,
             editor_tx,
+            webview_sender,
             span_interner,
         }
     }
@@ -324,10 +327,26 @@ impl OutlineRenderActor {
             };
             let data = self.outline(&document).await;
             log::debug!("OutlineRenderActor: sending outline");
-            let Ok(_) = self.editor_tx.send(EditorActorRequest::Outline(data)) else {
-                log::info!("OutlineRenderActor: outline_sender is dropped");
-                break;
-            };
+            match serde_json::to_string(&data) {
+                Ok(json) => {
+                    if self
+                        .webview_sender
+                        .send(format!("outline,{json}").into_bytes())
+                        .is_err()
+                    {
+                        log::info!("OutlineRenderActor: webview_sender is dropped");
+                        break;
+                    }
+                }
+                Err(err) => log::warn!("OutlineRenderActor: failed to serialize outline: {err}"),
+            }
+            if self
+                .editor_tx
+                .send(EditorActorRequest::Outline(data))
+                .is_err()
+            {
+                log::debug!("OutlineRenderActor: editor_tx is dropped");
+            }
         }
         log::info!("OutlineRenderActor: exiting")
     }
