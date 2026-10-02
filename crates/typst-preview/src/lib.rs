@@ -195,7 +195,7 @@ impl Previewer {
                             h.renderer_tx.subscribe(),
                             h.doc_sender.clone(),
                             h.editor_tx.clone(),
-                            svg.0,
+                            svg.0.clone(),
                             h.webview_tx,
                         );
                         tokio::spawn(render_actor.run());
@@ -203,6 +203,7 @@ impl Previewer {
                             h.renderer_tx.subscribe(),
                             h.doc_sender.clone(),
                             h.editor_tx.clone(),
+                            svg.0,
                             h.span_interner,
                         );
                         tokio::spawn(outline_render_actor.run());
