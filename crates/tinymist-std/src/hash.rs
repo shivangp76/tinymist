@@ -192,6 +192,7 @@ pub struct FingerprintBuilder {
     #[cfg(feature = "bi-hash")]
     fast_conflict_checker: crate::adt::CHashMap<u32, Vec<u8>>,
     /// The conflict checker mapping fingerprints to their underlying data.
+    #[cfg(feature = "bi-hash")]
     conflict_checker: crate::adt::CHashMap<Fingerprint, Vec<u8>>,
 }
 
@@ -205,24 +206,19 @@ impl FingerprintBuilder {
         fingerprint
     }
 
-    /// Resolves the fingerprint and check the conflict.
+    /// Resolves the fingerprint of the item, including its type id.
+    ///
+    /// It doesn't record the hashed data to check conflicts, because the
+    /// builder lives as long as its owner (e.g. an incremental renderer) and
+    /// the recorded data would grow with every distinct item ever resolved.
+    /// See [`Fingerprint`] for why conflicts are negligible.
     pub fn resolve<T: Hash + 'static>(&self, item: &T) -> Fingerprint {
         let mut s = FingerprintSipHasher { data: Vec::new() };
         item.type_id().hash(&mut s);
         item.hash(&mut s);
 
-        let (fingerprint, featured_data) = s.finish_fingerprint();
-        let Some(prev_featured_data) = self.conflict_checker.get(&fingerprint) else {
-            self.conflict_checker.insert(fingerprint, featured_data);
-            return fingerprint;
-        };
-
-        if *prev_featured_data == *featured_data {
-            return fingerprint;
-        }
-
-        // todo: soft error
-        panic!("Fingerprint conflict detected!");
+        let (fingerprint, _featured_data) = s.finish_fingerprint();
+        fingerprint
     }
 }
 
@@ -385,4 +381,18 @@ fn test_fingerprint() {
 
     let t = Fingerprint::from_pair(0, 0);
     assert_eq!(Fingerprint::try_from_str(&t.as_svg_id("")).unwrap(), t);
+}
+
+#[test]
+fn test_fingerprint_builder_resolve() {
+    let builder = FingerprintBuilder::default();
+
+    // Resolving is deterministic across calls and builders.
+    let a = builder.resolve(&"item");
+    assert_eq!(a, builder.resolve(&"item"));
+    assert_eq!(a, FingerprintBuilder::default().resolve(&"item"));
+
+    // Distinct items and types hash differently.
+    assert_ne!(a, builder.resolve(&"other"));
+    assert_ne!(builder.resolve(&1u32), builder.resolve(&1u64));
 }
