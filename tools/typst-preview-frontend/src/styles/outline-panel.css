@@ -1,0 +1,52 @@
+#typst-outline-panel {
+  position: absolute;
+  float: left;
+  top: 55px;
+  left: 5vw;
+  width: 90vw;
+  height: calc(95vh - 55px);
+  z-index: 2;
+  overflow: hidden;
+  background-color: rgb(17, 17, 17);
+  border: 1px solid #b3b3b3;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.4);
+  border-radius: 8px;
+  box-sizing: border-box;
+  color: rgb(241, 245, 249);
+  font-size: 0.7rem;
+}
+
+#typst-outline-list ul {
+  list-style: none;
+  margin: 0;
+  padding-inline-start: 1rem;
+}
+
+#typst-outline-list > ul {
+  padding-inline-start: 0;
+}
+
+#typst-outline-list .typst-outline-entry {
+  padding: 0.15rem 0.3rem;
+  border-radius: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color 0.2s;
+}
+
+#typst-outline-list .typst-outline-entry.clickable {
+  cursor: pointer;
+}
+
+#typst-outline-list .typst-outline-entry.clickable:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+#typst-outline-list .typst-outline-entry.level-1 {
+  font-weight: 700;
+}
+
+#typst-outline-list .typst-outline-empty {
+  color: #a3a3a3;
+}
