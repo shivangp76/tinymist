@@ -1,4 +1,5 @@
 import { PreviewMode } from "typst-dom/typst-doc.mjs";
+import type { OutlineItemData } from "typst-dom/typst-outline.mjs";
 import {
   TypstPreviewDocument as TypstDocument,
   TypstDomHookedElement,
@@ -45,6 +46,75 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
   let disposed = false;
   let $ws: WebSocketSubject<ArrayBuffer> | undefined = undefined;
   const subsribes: Subscription[] = [];
+
+  /// Scrolls (or switches slide) to the given document position.
+  function jumpToPosition(svgDoc: TypstDocument, page: number, x: number, y: number) {
+    if (previewMode === PreviewMode.Slide) {
+      const pageSelector = document.getElementById("typst-page-selector") as
+        | HTMLSelectElement
+        | undefined;
+      if (svgDoc.setPartialPageNumber(page)) {
+        if (pageSelector) {
+          pageSelector.value = page.toString();
+        }
+        // todo: hint location
+      }
+      return;
+    }
+
+    const rootElem = document.getElementById("typst-app")?.firstElementChild;
+    if (rootElem) {
+      /// Note: when it is really scrolled, it will trigger `svgDoc.addViewportChange`
+      /// via `window.onscroll` event
+      windowElem.handleTypstLocation(rootElem, page, x, y);
+    }
+  }
+
+  const removeOutline = () => {
+    document.getElementById("typst-outline-panel")?.classList.add("hidden");
+  };
+
+  /// Renders the table of contents popup from the outline sent by the server.
+  function renderOutlinePanel(svgDoc: TypstDocument, items: OutlineItemData[]) {
+    const list = document.getElementById("typst-outline-list");
+    if (!list) {
+      return;
+    }
+
+    const buildList = (items: OutlineItemData[], level: number) => {
+      const ul = document.createElement("ul");
+      for (const item of items) {
+        const li = document.createElement("li");
+        const entry = document.createElement("div");
+        entry.classList.add("typst-outline-entry", `level-${level}`);
+        entry.textContent = item.title;
+        entry.title = item.title;
+        const position = item.position;
+        if (position) {
+          entry.classList.add("clickable");
+          entry.addEventListener("click", () => {
+            removeOutline();
+            jumpToPosition(svgDoc, position.page_no, position.x, position.y);
+          });
+        }
+        li.append(entry);
+        if (item.children.length > 0) {
+          li.append(buildList(item.children, level + 1));
+        }
+        ul.append(li);
+      }
+      return ul;
+    };
+
+    if (items.length === 0) {
+      const empty = document.createElement("div");
+      empty.classList.add("typst-outline-empty");
+      empty.textContent = "No headings in this document.";
+      list.replaceChildren(empty);
+    } else {
+      list.replaceChildren(buildList(items, 1));
+    }
+  }
 
   function createSvgDocument(kModule: RenderSession) {
     const hookedElem = document.getElementById("typst-app")! as TypstDomHookedElement;
@@ -167,7 +237,19 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
       const help = document.getElementById("typst-help-panel");
       console.log("toggleHelp", help);
       if (help) {
+        removeOutline();
         help.classList.toggle("hidden");
+      }
+    };
+
+    const toggleOutline = () => {
+      if (isContentPreview) {
+        return;
+      }
+      const outline = document.getElementById("typst-outline-panel");
+      if (outline) {
+        removeHelp();
+        outline.classList.toggle("hidden");
       }
     };
 
@@ -189,6 +271,11 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
     const helpButton = document.getElementById("typst-top-help-button");
     helpButton?.addEventListener("click", toggleHelp);
 
+    const outlineButton = document.getElementById("typst-top-toolbar-navigator");
+    if (outlineButton) {
+      subsribes.push(fromEvent(outlineButton, "click").subscribe(toggleOutline));
+    }
+
     window.addEventListener("keydown", (e) => {
       let handled = true;
 
@@ -200,6 +287,7 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
           if (previewMode === PreviewMode.Slide) {
             blurInput();
             removeHelp();
+            removeOutline();
             updatePrev();
           }
           break;
@@ -209,6 +297,7 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
           if (previewMode === PreviewMode.Slide) {
             blurInput();
             removeHelp();
+            removeOutline();
             updateNext();
           }
           break;
@@ -228,12 +317,18 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
           blurInput();
           toggleHelp();
           break;
+        case "o":
+          blurInput();
+          toggleOutline();
+          break;
         case "g":
           removeHelp();
+          removeOutline();
           focusInput();
           break;
         case "Escape":
           removeHelp();
+          removeOutline();
           blurInput();
           handled = false;
           break;
@@ -388,32 +483,11 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
         );
         // console.log("resolved", page, x, y, "from", currentPageNumber);
 
-        let pageToJump = page;
-        if (pageToJump === Number.MAX_SAFE_INTEGER) {
+        if (page === Number.MAX_SAFE_INTEGER) {
           return;
         }
 
-        if (previewMode === PreviewMode.Slide) {
-          const pageSelector = document.getElementById("typst-page-selector") as
-            | HTMLSelectElement
-            | undefined;
-          if (svgDoc.setPartialPageNumber(page)) {
-            if (pageSelector) {
-              pageSelector.value = page.toString();
-            }
-            // pageToJump = 1;
-            // todo: hint location
-            return;
-          } else {
-            return;
-          }
-        }
-
-        if (rootElem) {
-          /// Note: when it is really scrolled, it will trigger `svgDoc.addViewportChange`
-          /// via `window.onscroll` event
-          windowElem.handleTypstLocation(rootElem, pageToJump, x, y);
-        }
+        jumpToPosition(svgDoc, page, x, y);
         return;
       } else if (message[0] === "cursor") {
         // todo: aware height padding
@@ -444,7 +518,14 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
         ensureInvertColors(document.getElementById("typst-app"), strategy);
         return;
       } else if (message[0] === "outline") {
-        console.log("Experimental feature: outline rendering");
+        if (!isContentPreview) {
+          try {
+            const outline = JSON.parse(dec.decode((message[1] as any).buffer));
+            renderOutlinePanel(svgDoc, outline?.items ?? []);
+          } catch (e) {
+            console.error("failed to parse outline", e);
+          }
+        }
         return;
       }
 

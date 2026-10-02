@@ -4,6 +4,7 @@ import "./typst.css";
 import "./styles/toolbar.css";
 import "./styles/layout.css";
 import "./styles/help-panel.css";
+import "./styles/outline-panel.css";
 import "./styles/outline.css";
 
 import { wsMain, PreviewMode } from "./ws";
