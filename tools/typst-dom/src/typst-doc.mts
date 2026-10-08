@@ -217,6 +217,8 @@ export class TypstDocumentContext<O = any> {
       scrollDirection: number,
       pageX: number | undefined,
       pageY: number | undefined,
+      focusClientX?: number,
+      focusClientY?: number,
     ) => {
       const prevScaleRatio = this.currentScaleRatio;
       // Get wheel scroll direction and calculate new scale
@@ -240,6 +242,10 @@ export class TypstDocumentContext<O = any> {
         return;
       }
       const scrollFactor = this.currentScaleRatio / prevScaleRatio;
+      // remember which part of the document is under the zoom focus (the
+      // cursor, or the viewport top for keyboard zoom). The layout is still the
+      // old one here since the new scale is only applied on the next rescale.
+      const anchored = this.captureZoomAnchor(focusClientX, focusClientY);
 
       // hide scrollbar if scale == 1
       if (Math.abs(this.currentScaleRatio - 1) < 1e-5) {
@@ -272,7 +278,7 @@ export class TypstDocumentContext<O = any> {
       }
 
       // make sure the cursor is still on the same position
-      if (pageX !== undefined && pageY !== undefined) {
+      if (!anchored && pageX !== undefined && pageY !== undefined) {
         const scrollX = pageX * (scrollFactor - 1);
         const scrollY = pageY * (scrollFactor - 1);
         this.hookedElem.parentElement!.scrollBy(scrollX, scrollY);
@@ -322,7 +328,13 @@ export class TypstDocumentContext<O = any> {
         deltaDistance = 0;
 
         const baseRect = this.hookedElem.getBoundingClientRect();
-        doRescale(scrollDirection, event.pageX - baseRect.x, event.pageY - baseRect.y);
+        doRescale(
+          scrollDirection,
+          event.pageX - baseRect.x,
+          event.pageY - baseRect.y,
+          event.clientX,
+          event.clientY,
+        );
         return false;
       }
     };
@@ -345,6 +357,14 @@ export class TypstDocumentContext<O = any> {
         document.body.removeEventListener("keydown", keydownEventHandler);
       });
     }
+  }
+
+  /// Records the document position under the zoom focus (client coordinates,
+  /// defaulting to the viewport's top-left) so the render mode can restore it
+  /// once the new scale is applied. Returns false if the mode does not support
+  /// zoom anchoring, in which case a plain scroll adjustment is used instead.
+  protected captureZoomAnchor(_focusClientX?: number, _focusClientY?: number): boolean {
+    return false;
   }
 
   /// Get current scale from html to svg
