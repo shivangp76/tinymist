@@ -16,6 +16,7 @@ import { RenderSession } from "@myriaddreamin/typst.ts/dist/esm/renderer.mjs";
 import { WebSocketSubject, webSocket } from "rxjs/webSocket";
 import { Subject, Subscription, buffer, debounceTime, fromEvent, tap } from "rxjs";
 import { handleHtmlPreviewFrame } from "./html-preview";
+import { resolvePreviewKey } from "./preview-keybindings";
 export { PreviewMode } from "typst-dom/typst-doc.mjs";
 
 // for debug propose
@@ -277,78 +278,59 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
     }
 
     window.addEventListener("keydown", (e) => {
-      // Browser and OS shortcuts (Cmd+T, Ctrl+L, Cmd+Up, ...) are not ours.
-      if (e.metaKey || e.ctrlKey || e.altKey) {
-        return;
-      }
-
-      let handled = true;
-
       const scrollDelta = 50;
 
-      switch (e.key) {
-        case "ArrowLeft":
-        case "ArrowUp":
-          if (previewMode === PreviewMode.Slide) {
-            blurInput();
-            removeHelp();
-            removeOutline();
-            updatePrev();
-          } else {
-            handled = false;
-          }
+      const { action, preventDefault } = resolvePreviewKey(e, previewMode);
+
+      switch (action) {
+        case "prev":
+          blurInput();
+          removeHelp();
+          removeOutline();
+          updatePrev();
           break;
-        case " ":
-        case "ArrowRight":
-        case "ArrowDown":
-          if (previewMode === PreviewMode.Slide) {
-            blurInput();
-            removeHelp();
-            removeOutline();
-            updateNext();
-          } else {
-            handled = false;
-          }
+        case "next":
+          blurInput();
+          removeHelp();
+          removeOutline();
+          updateNext();
           break;
-        case "j":
+        case "scrollDown":
           resizeTarget.scrollBy({ top: + scrollDelta, behavior: "instant" });
           break;
-        case "k":
+        case "scrollUp":
           resizeTarget.scrollBy({ top: - scrollDelta, behavior: "instant" });
           break;
-        case "h":
+        case "scrollPageUp":
           resizeTarget.scrollBy({ top: - scrollDelta * 10, behavior: "smooth" });
           break;
-        case "l":
+        case "scrollPageDown":
           resizeTarget.scrollBy({ top: + scrollDelta * 10, behavior: "smooth" });
           break;
-        case "?":
+        case "toggleHelp":
           blurInput();
           toggleHelp();
           break;
-        case "o":
+        case "toggleOutline":
           blurInput();
           toggleOutline();
           break;
-        case "g":
+        case "focusInput":
           removeHelp();
           removeOutline();
           focusInput();
           break;
-        case "Escape":
+        case "escape":
           removeHelp();
           removeOutline();
           blurInput();
-          handled = false;
           break;
-        case "t":
+        case "toggleTheme":
           toggleTheme();
           break;
-        default:
-          handled = false;
       }
 
-      if (handled) {
+      if (preventDefault) {
         e.preventDefault();
       }
     });
