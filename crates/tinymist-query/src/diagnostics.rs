@@ -111,6 +111,9 @@ impl<'w> DiagWorker<'w> {
     pub fn handle(&mut self, diag: &TypstDiagnostic) {
         match self.convert_diagnostic(diag) {
             Ok((uri, diagnostic)) => {
+                for (uri, diagnostic) in self.traced_diagnostics(diag, &uri, &diagnostic) {
+                    self.results.entry(uri).or_default().push(diagnostic);
+                }
                 self.results.entry(uri).or_default().push(diagnostic);
             }
             Err(error) => {
@@ -163,6 +166,53 @@ impl<'w> DiagWorker<'w> {
         };
 
         Ok((uri, diagnostic))
+    }
+
+    /// Repeats a diagnostic at the innermost trace point in each other file it passed through,
+    /// since editors only show a file's own diagnostics. E.g. a template that panics on bad input
+    /// reports the panic in the template, but the input is in the document being edited.
+    /// Package files are skipped, since they are not edited.
+    fn traced_diagnostics(
+        &self,
+        typst_diagnostic: &TypstDiagnostic,
+        uri: &Url,
+        diagnostic: &Diagnostic,
+    ) -> Vec<(Url, Diagnostic)> {
+        let (primary_id, _) = self.diagnostic_span_id(typst_diagnostic);
+        let mut seen = vec![primary_id];
+        let origin = DiagnosticRelatedInformation {
+            location: LspLocation {
+                uri: uri.clone(),
+                range: diagnostic.range,
+            },
+            message: "error raised here".into(),
+        };
+        let mut results = Vec::new();
+        // The trace is ordered from the innermost call outwards
+        for tracepoint in &typst_diagnostic.trace {
+            let Some(id) = tracepoint.span.id() else {
+                continue;
+            };
+            if WorkspaceResolver::is_package_file(id) || seen.contains(&id) {
+                continue;
+            }
+            seen.push(id);
+            let Some(info) = self.to_related_info(tracepoint) else {
+                continue;
+            };
+            let related_information = iter::once(origin.clone())
+                .chain(diagnostic.related_information.iter().flatten().cloned())
+                .collect();
+            results.push((
+                info.location.uri,
+                Diagnostic {
+                    range: info.location.range,
+                    related_information: Some(related_information),
+                    ..diagnostic.clone()
+                },
+            ));
+        }
+        results
     }
 
     fn to_related_info(
