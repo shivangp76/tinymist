@@ -13,7 +13,8 @@ export type PreviewKeyAction =
   | "escape"
   | "toggleTheme"
   | "unlinkScroll"
-  | "linkScroll";
+  | "linkScroll"
+  | "fitToWidth";
 
 export interface PreviewKeyEvent {
   key: string;
@@ -66,6 +67,8 @@ export function resolvePreviewKey(e: PreviewKeyEvent, previewMode: PreviewMode):
       return { action: "unlinkScroll", preventDefault: true };
     case "U":
       return { action: "linkScroll", preventDefault: true };
+    case "=":
+      return { action: "fitToWidth", preventDefault: true };
     default:
       return NONE;
   }
