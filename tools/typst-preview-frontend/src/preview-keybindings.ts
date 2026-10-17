@@ -11,7 +11,9 @@ export type PreviewKeyAction =
   | "toggleOutline"
   | "focusInput"
   | "escape"
-  | "toggleTheme";
+  | "toggleTheme"
+  | "unlinkScroll"
+  | "linkScroll";
 
 export interface PreviewKeyEvent {
   key: string;
@@ -60,6 +62,10 @@ export function resolvePreviewKey(e: PreviewKeyEvent, previewMode: PreviewMode):
       return { action: "escape", preventDefault: false };
     case "t":
       return { action: "toggleTheme", preventDefault: true };
+    case "u":
+      return { action: "unlinkScroll", preventDefault: true };
+    case "U":
+      return { action: "linkScroll", preventDefault: true };
     default:
       return NONE;
   }

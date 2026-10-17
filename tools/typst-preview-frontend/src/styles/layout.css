@@ -81,3 +81,18 @@
 #typst-container.mode-slide #typst-container-top:hover {
   opacity: 1;
 }
+
+#typst-scroll-unlinked-badge {
+  position: fixed;
+  right: 8px;
+  bottom: 8px;
+  z-index: 10;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-family: 'Segoe UI', Arial, 'Microsoft Yahei', sans-serif;
+  color: var(--typst-preview-toolbar-fg-color);
+  background-color: var(--typst-preview-toolbar-bg-color);
+  border: 0.5px solid var(--typst-preview-toolbar-border-color);
+  opacity: 0.8;
+}
