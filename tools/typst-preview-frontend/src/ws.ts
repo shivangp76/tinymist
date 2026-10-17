@@ -45,6 +45,9 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
   const windowElem = document.getElementById("typst-container")! as TypstDomWindowElement;
 
   let disposed = false;
+  /// Whether this window follows the editor's cursor. Only affects this window,
+  /// so several previews of the same document can be linked independently.
+  let scrollLinked = true;
   let $ws: WebSocketSubject<ArrayBuffer> | undefined = undefined;
   const subsribes: Subscription[] = [];
 
@@ -269,6 +272,11 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
       }
     };
 
+    const setScrollLinked = (linked: boolean) => {
+      scrollLinked = linked;
+      document.getElementById("typst-scroll-unlinked-badge")?.classList.toggle("hidden", linked);
+    };
+
     const helpButton = document.getElementById("typst-top-help-button");
     helpButton?.addEventListener("click", toggleHelp);
 
@@ -327,6 +335,12 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
           break;
         case "toggleTheme":
           toggleTheme();
+          break;
+        case "unlinkScroll":
+          setScrollLinked(false);
+          break;
+        case "linkScroll":
+          setScrollLinked(true);
           break;
       }
 
@@ -443,6 +457,10 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
       }
 
       if (message[0] === "jump" || message[0] === "viewport") {
+        if (!scrollLinked) {
+          return;
+        }
+
         const rootElem = document.getElementById("typst-app")?.firstElementChild;
 
         // todo: aware height padding

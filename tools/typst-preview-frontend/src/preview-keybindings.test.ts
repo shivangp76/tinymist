@@ -29,6 +29,17 @@ describe("resolvePreviewKey", () => {
     });
   });
 
+  it("maps u / U to unlinking and linking scroll sync", () => {
+    expect(resolvePreviewKey(key("u"), PreviewMode.Doc)).toEqual({
+      action: "unlinkScroll",
+      preventDefault: true,
+    });
+    expect(resolvePreviewKey(key("U"), PreviewMode.Doc)).toEqual({
+      action: "linkScroll",
+      preventDefault: true,
+    });
+  });
+
   it("does not preventDefault or act on Escape", () => {
     expect(resolvePreviewKey(key("Escape"), PreviewMode.Doc)).toEqual({
       action: "escape",
