@@ -342,6 +342,9 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
         case "linkScroll":
           setScrollLinked(true);
           break;
+        case "fitToWidth":
+          svgDoc.fitToWidth();
+          break;
       }
 
       if (preventDefault) {

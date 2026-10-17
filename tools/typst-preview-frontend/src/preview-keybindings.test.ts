@@ -29,6 +29,21 @@ describe("resolvePreviewKey", () => {
     });
   });
 
+  it("maps = to fitting the page width, leaving Ctrl/Cmd+= to browser zoom", () => {
+    expect(resolvePreviewKey(key("="), PreviewMode.Doc)).toEqual({
+      action: "fitToWidth",
+      preventDefault: true,
+    });
+    expect(resolvePreviewKey(key("=", { ctrlKey: true }), PreviewMode.Doc)).toEqual({
+      action: null,
+      preventDefault: false,
+    });
+    expect(resolvePreviewKey(key("=", { metaKey: true }), PreviewMode.Doc)).toEqual({
+      action: null,
+      preventDefault: false,
+    });
+  });
+
   it("maps u / U to unlinking and linking scroll sync", () => {
     expect(resolvePreviewKey(key("u"), PreviewMode.Doc)).toEqual({
       action: "unlinkScroll",
