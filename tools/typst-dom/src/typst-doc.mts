@@ -241,50 +241,7 @@ export class TypstDocumentContext<O = any> {
         // no y-axis scroll
         return;
       }
-      const scrollFactor = this.currentScaleRatio / prevScaleRatio;
-      // remember which part of the document is under the zoom focus (the
-      // cursor, or the viewport top for keyboard zoom). The layout is still the
-      // old one here since the new scale is only applied on the next rescale.
-      const anchored = this.captureZoomAnchor(focusClientX, focusClientY);
-
-      // hide scrollbar if scale == 1
-      if (Math.abs(this.currentScaleRatio - 1) < 1e-5) {
-        this.hookedElem.classList.add("hide-scrollbar-x");
-        this.hookedElem.parentElement?.classList.add("hide-scrollbar-x");
-        if (this.previewMode === PreviewMode.Slide) {
-          this.hookedElem.classList.add("hide-scrollbar-y");
-          this.hookedElem.parentElement?.classList.add("hide-scrollbar-y");
-        }
-      } else {
-        this.hookedElem.classList.remove("hide-scrollbar-x");
-        this.hookedElem.parentElement?.classList.remove("hide-scrollbar-x");
-        if (this.previewMode === PreviewMode.Slide) {
-          this.hookedElem.classList.remove("hide-scrollbar-y");
-          this.hookedElem.parentElement?.classList.remove("hide-scrollbar-y");
-        }
-      }
-
-      // reserve space to scroll down
-      const svg = this.hookedElem.firstElementChild! as SVGElement;
-      if (svg) {
-        const scaleRatio = this.getSvgScaleRatio();
-
-        const dataHeight = Number.parseFloat(svg.getAttribute("data-height")!);
-        const scaledHeight = Math.ceil(dataHeight * scaleRatio);
-
-        // we increase the height by 2 times.
-        // The `2` is only a magic number that is large enough.
-        this.hookedElem.style.height = `${scaledHeight * 2}px`;
-      }
-
-      // make sure the cursor is still on the same position
-      if (!anchored && pageX !== undefined && pageY !== undefined) {
-        const scrollX = pageX * (scrollFactor - 1);
-        const scrollY = pageY * (scrollFactor - 1);
-        this.hookedElem.parentElement!.scrollBy(scrollX, scrollY);
-      }
-      // toggle scale change event
-      this.addViewportChange();
+      this.applyScaleRatio(prevScaleRatio, pageX, pageY, focusClientX, focusClientY);
     };
 
     // Ctrl+= or Ctrl+- rescaling
@@ -357,6 +314,86 @@ export class TypstDocumentContext<O = any> {
         document.body.removeEventListener("keydown", keydownEventHandler);
       });
     }
+  }
+
+  /// Applies `currentScaleRatio` after it was changed from `prevScaleRatio`,
+  /// keeping the document position under the zoom focus in place.
+  private applyScaleRatio(
+    prevScaleRatio: number,
+    pageX?: number,
+    pageY?: number,
+    focusClientX?: number,
+    focusClientY?: number,
+  ) {
+    const scrollFactor = this.currentScaleRatio / prevScaleRatio;
+    // remember which part of the document is under the zoom focus (the
+    // cursor, or the viewport top for keyboard zoom). The layout is still the
+    // old one here since the new scale is only applied on the next rescale.
+    const anchored = this.captureZoomAnchor(focusClientX, focusClientY);
+
+    // hide scrollbar if scale == 1
+    if (Math.abs(this.currentScaleRatio - 1) < 1e-5) {
+      this.hookedElem.classList.add("hide-scrollbar-x");
+      this.hookedElem.parentElement?.classList.add("hide-scrollbar-x");
+      if (this.previewMode === PreviewMode.Slide) {
+        this.hookedElem.classList.add("hide-scrollbar-y");
+        this.hookedElem.parentElement?.classList.add("hide-scrollbar-y");
+      }
+    } else {
+      this.hookedElem.classList.remove("hide-scrollbar-x");
+      this.hookedElem.parentElement?.classList.remove("hide-scrollbar-x");
+      if (this.previewMode === PreviewMode.Slide) {
+        this.hookedElem.classList.remove("hide-scrollbar-y");
+        this.hookedElem.parentElement?.classList.remove("hide-scrollbar-y");
+      }
+    }
+
+    // reserve space to scroll down
+    const svg = this.hookedElem.firstElementChild! as SVGElement;
+    if (svg) {
+      const scaleRatio = this.getSvgScaleRatio();
+
+      const dataHeight = Number.parseFloat(svg.getAttribute("data-height")!);
+      const scaledHeight = Math.ceil(dataHeight * scaleRatio);
+
+      // we increase the height by 2 times.
+      // The `2` is only a magic number that is large enough.
+      this.hookedElem.style.height = `${scaledHeight * 2}px`;
+    }
+
+    // make sure the cursor is still on the same position
+    if (!anchored && pageX !== undefined && pageY !== undefined) {
+      const scrollX = pageX * (scrollFactor - 1);
+      const scrollY = pageY * (scrollFactor - 1);
+      this.hookedElem.parentElement!.scrollBy(scrollX, scrollY);
+    }
+    // toggle scale change event
+    this.addViewportChange();
+  }
+
+  /// Zooms so that the page width matches the container width. In doc mode
+  /// this resets the zoom; in slide mode it may enlarge the slide past the
+  /// container height.
+  fitToWidth() {
+    const svg = this.hookedElem.firstElementChild as SVGElement;
+    if (!svg) {
+      return;
+    }
+
+    this.cachedDOMState = this.retrieveDOMState();
+    // updates `currentRealScale`
+    this.getSvgScaleRatio();
+    const svgWidth = Number.parseFloat(
+      svg.getAttribute("data-width") || svg.getAttribute("width") || "1",
+    );
+    const widthScale = this.cachedDOMState.width / svgWidth;
+
+    const prevScaleRatio = this.currentScaleRatio;
+    this.currentScaleRatio = widthScale / this.currentRealScale;
+    if (Math.abs(this.currentScaleRatio - prevScaleRatio) < 1e-5) {
+      return;
+    }
+    this.applyScaleRatio(prevScaleRatio);
   }
 
   /// Records the document position under the zoom focus (client coordinates,
@@ -540,6 +577,7 @@ export interface TypstDocument<T> {
   setPartialPageNumber(page: number): boolean;
   getPartialPageNumber(): number;
   setOutineData(outline: any): void;
+  fitToWidth(): void;
 }
 
 export function provideDoc<T extends TypstDocumentContext>(
@@ -603,6 +641,10 @@ export function provideDoc<T extends TypstDocumentContext>(
 
     getPartialPageNumber(): number {
       return this.impl.getPartialPageNumber();
+    }
+
+    fitToWidth() {
+      this.impl.fitToWidth();
     }
 
     setOutineData(outline: any) {
