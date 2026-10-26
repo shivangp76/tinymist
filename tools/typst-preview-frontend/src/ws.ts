@@ -16,7 +16,7 @@ import { RenderSession } from "@myriaddreamin/typst.ts/dist/esm/renderer.mjs";
 import { WebSocketSubject, webSocket } from "rxjs/webSocket";
 import { Subject, Subscription, buffer, debounceTime, fromEvent, tap } from "rxjs";
 import { handleHtmlPreviewFrame } from "./html-preview";
-import { resolvePreviewKey } from "./preview-keybindings";
+import { PreviewKeySequence } from "./preview-keybindings";
 export { PreviewMode } from "typst-dom/typst-doc.mjs";
 
 // for debug propose
@@ -168,15 +168,6 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
       }),
     );
 
-    const focusInput = () => {
-      const inpPageSelector = document.getElementById("typst-page-selector") as
-        | HTMLSelectElement
-        | undefined;
-      if (inpPageSelector) {
-        inpPageSelector.focus();
-      }
-    };
-
     const blurInput = () => {
       const inpPageSelector = document.getElementById("typst-page-selector") as
         | HTMLSelectElement
@@ -205,6 +196,74 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
           pageSelector.value = page.toString();
           blurInput();
         }
+      }
+    };
+
+    /// Offset of the top of the page (1-based) within the scroll container.
+    const pageScrollTop = (page: number): number | undefined => {
+      const docRoot = document.getElementById("typst-app")?.firstElementChild;
+      if (!docRoot) {
+        return undefined;
+      }
+
+      let pageTop: number | undefined = undefined;
+      if (docRoot.getAttribute("data-render-mode") === "canvas") {
+        // Canvas pages are numbered from 0, see `handleTypstLocation`.
+        const pageElem = docRoot.querySelector(`.typst-page[data-page-number="${page - 1}"]`);
+        pageTop = pageElem?.getBoundingClientRect().top;
+      } else {
+        const pageElem = Array.from(docRoot.children).filter((e) => e.tagName === "g")[page - 1];
+        const transform = (pageElem as SVGGElement | undefined)?.transform.baseVal.consolidate();
+        const dataHeight = Number.parseFloat(docRoot.getAttribute("data-height") || "0");
+        if (transform && dataHeight > 0) {
+          const svgRect = docRoot.getBoundingClientRect();
+          pageTop = svgRect.top + (transform.matrix.f / dataHeight) * svgRect.height;
+        }
+      }
+
+      if (pageTop === undefined) {
+        return undefined;
+      }
+      return pageTop - resizeTarget.getBoundingClientRect().top + resizeTarget.scrollTop;
+    };
+
+    /// Shows the page (1-based, clamped to the document) at the top of the window.
+    const gotoPage = (page: number) => {
+      const total = svgDoc.kModule.retrievePagesInfo().length;
+      if (total === 0) {
+        return;
+      }
+      page = Math.min(Math.max(page, 1), total);
+
+      if (previewMode === PreviewMode.Slide) {
+        const pageSelector = document.getElementById("typst-page-selector") as
+          | HTMLInputElement
+          | undefined;
+        if (svgDoc.setPartialPageNumber(page) && pageSelector) {
+          pageSelector.value = page.toString();
+        }
+        return;
+      }
+
+      const top = pageScrollTop(page);
+      if (top !== undefined) {
+        resizeTarget.scrollTo({ top, behavior: "instant" });
+      }
+    };
+
+    const gotoFirstPage = () => {
+      if (previewMode === PreviewMode.Slide) {
+        gotoPage(1);
+      } else {
+        resizeTarget.scrollTo({ top: 0, behavior: "instant" });
+      }
+    };
+
+    const gotoLastPage = () => {
+      if (previewMode === PreviewMode.Slide) {
+        gotoPage(Number.MAX_SAFE_INTEGER);
+      } else {
+        resizeTarget.scrollTo({ top: resizeTarget.scrollHeight, behavior: "instant" });
       }
     };
 
@@ -285,10 +344,23 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
       subsribes.push(fromEvent(outlineButton, "click").subscribe(toggleOutline));
     }
 
+    const keySequence = new PreviewKeySequence(previewMode);
+    const pendingKeysElem = document.getElementById("typst-pending-keys");
+
     window.addEventListener("keydown", (e) => {
       const scrollDelta = 50;
 
-      const { action, preventDefault } = resolvePreviewKey(e, previewMode);
+      // Leave typing in the page selector alone.
+      if (e.target instanceof HTMLInputElement && e.key !== "Escape") {
+        return;
+      }
+
+      const { action, preventDefault, page } = keySequence.resolve(e);
+
+      if (pendingKeysElem) {
+        pendingKeysElem.textContent = keySequence.pending;
+        pendingKeysElem.classList.toggle("hidden", keySequence.pending === "");
+      }
 
       switch (action) {
         case "prev":
@@ -323,10 +395,20 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
           blurInput();
           toggleOutline();
           break;
-        case "focusInput":
+        case "gotoFirstPage":
           removeHelp();
           removeOutline();
-          focusInput();
+          gotoFirstPage();
+          break;
+        case "gotoLastPage":
+          removeHelp();
+          removeOutline();
+          gotoLastPage();
+          break;
+        case "gotoPage":
+          removeHelp();
+          removeOutline();
+          gotoPage(page!);
           break;
         case "escape":
           removeHelp();

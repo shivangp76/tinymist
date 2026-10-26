@@ -82,9 +82,9 @@
   opacity: 1;
 }
 
-#typst-scroll-unlinked-badge {
+#typst-scroll-unlinked-badge,
+#typst-pending-keys {
   position: fixed;
-  right: 8px;
   bottom: 8px;
   z-index: 10;
   padding: 2px 8px;
@@ -95,4 +95,15 @@
   background-color: var(--typst-preview-toolbar-bg-color);
   border: 0.5px solid var(--typst-preview-toolbar-border-color);
   opacity: 0.8;
+}
+
+#typst-scroll-unlinked-badge {
+  right: 8px;
+}
+
+/* Shows a half-typed key sequence such as `12g`, like vim's showcmd */
+#typst-pending-keys {
+  left: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    Liberation Mono, Courier New, monospace;
 }
