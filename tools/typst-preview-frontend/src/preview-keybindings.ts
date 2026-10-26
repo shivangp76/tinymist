@@ -9,12 +9,14 @@ export type PreviewKeyAction =
   | "scrollPageDown"
   | "toggleHelp"
   | "toggleOutline"
-  | "focusInput"
   | "escape"
   | "toggleTheme"
   | "unlinkScroll"
   | "linkScroll"
-  | "fitToWidth";
+  | "fitToWidth"
+  | "gotoFirstPage"
+  | "gotoLastPage"
+  | "gotoPage";
 
 export interface PreviewKeyEvent {
   key: string;
@@ -26,6 +28,8 @@ export interface PreviewKeyEvent {
 export interface PreviewKeyResult {
   action: PreviewKeyAction | null;
   preventDefault: boolean;
+  /// The page number for `gotoPage`.
+  page?: number;
 }
 
 const NONE: PreviewKeyResult = { action: null, preventDefault: false };
@@ -57,8 +61,6 @@ export function resolvePreviewKey(e: PreviewKeyEvent, previewMode: PreviewMode):
       return { action: "toggleHelp", preventDefault: true };
     case "o":
       return { action: "toggleOutline", preventDefault: true };
-    case "g":
-      return { action: "focusInput", preventDefault: true };
     case "Escape":
       return { action: "escape", preventDefault: false };
     case "t":
@@ -71,5 +73,57 @@ export function resolvePreviewKey(e: PreviewKeyEvent, previewMode: PreviewMode):
       return { action: "fitToWidth", preventDefault: true };
     default:
       return NONE;
+  }
+}
+
+/// Resolves keys that only make sense as part of a vim-like sequence: a count
+/// prefix (`12G`, `12gg`) and the two-key `gg`. Every other key is passed to
+/// `resolvePreviewKey`.
+export class PreviewKeySequence {
+  private count = "";
+  private pendingG = false;
+
+  constructor(private previewMode: PreviewMode) {}
+
+  /// The keys typed so far in an unfinished sequence, for display.
+  get pending(): string {
+    return this.count + (this.pendingG ? "g" : "");
+  }
+
+  reset() {
+    this.count = "";
+    this.pendingG = false;
+  }
+
+  resolve(e: PreviewKeyEvent): PreviewKeyResult {
+    if (e.ctrlKey || e.metaKey || e.altKey) {
+      this.reset();
+      return NONE;
+    }
+
+    const isDigit = e.key.length === 1 && e.key >= "0" && e.key <= "9";
+    // A leading `0` is not a count, matching vim.
+    if (isDigit && !this.pendingG && (e.key !== "0" || this.count !== "")) {
+      this.count += e.key;
+      return { action: null, preventDefault: true };
+    }
+
+    if (e.key === "g" && !this.pendingG) {
+      this.pendingG = true;
+      return { action: null, preventDefault: true };
+    }
+
+    if (e.key === "G" || (e.key === "g" && this.pendingG)) {
+      const count = this.count;
+      const fallback = e.key === "G" ? "gotoLastPage" : "gotoFirstPage";
+      this.reset();
+      if (count !== "") {
+        return { action: "gotoPage", preventDefault: true, page: Number.parseInt(count) };
+      }
+      return { action: fallback, preventDefault: true };
+    }
+
+    this.reset();
+    return resolvePreviewKey(e, this.previewMode);
   }
 }

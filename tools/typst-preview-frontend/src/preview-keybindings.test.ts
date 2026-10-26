@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PreviewMode } from "typst-dom/typst-doc.mjs";
-import { resolvePreviewKey } from "./preview-keybindings";
+import { PreviewKeySequence, resolvePreviewKey } from "./preview-keybindings";
 
 const key = (
   k: string,
@@ -92,5 +92,56 @@ describe("resolvePreviewKey", () => {
       action: null,
       preventDefault: true,
     });
+  });
+});
+
+describe("PreviewKeySequence", () => {
+  const feed = (seq: PreviewKeySequence, keys: string[]) =>
+    keys.map((k) => seq.resolve(key(k))).at(-1);
+
+  it("maps gg and G to the first and last page", () => {
+    const seq = new PreviewKeySequence(PreviewMode.Doc);
+    expect(seq.resolve(key("g"))).toEqual({ action: null, preventDefault: true });
+    expect(seq.pending).toBe("g");
+    expect(seq.resolve(key("g"))).toEqual({ action: "gotoFirstPage", preventDefault: true });
+    expect(seq.pending).toBe("");
+    expect(seq.resolve(key("G"))).toEqual({ action: "gotoLastPage", preventDefault: true });
+  });
+
+  it("goes to page n with a count before G or gg", () => {
+    const seq = new PreviewKeySequence(PreviewMode.Doc);
+    expect(feed(seq, ["1", "2", "G"])).toEqual({
+      action: "gotoPage",
+      preventDefault: true,
+      page: 12,
+    });
+    feed(seq, ["3", "0", "g"]);
+    expect(seq.pending).toBe("30g");
+    expect(seq.resolve(key("g"))).toEqual({ action: "gotoPage", preventDefault: true, page: 30 });
+  });
+
+  it("does not start a count with 0", () => {
+    const seq = new PreviewKeySequence(PreviewMode.Doc);
+    seq.resolve(key("0"));
+    expect(seq.pending).toBe("");
+    expect(seq.resolve(key("G")).action).toBe("gotoLastPage");
+  });
+
+  it("drops a pending sequence on any other key and handles that key", () => {
+    const seq = new PreviewKeySequence(PreviewMode.Doc);
+    expect(feed(seq, ["5", "j"])).toEqual({ action: "scrollDown", preventDefault: true });
+    expect(seq.pending).toBe("");
+    expect(feed(seq, ["g", "Escape"])).toEqual({ action: "escape", preventDefault: false });
+    expect(seq.resolve(key("G")).action).toBe("gotoLastPage");
+  });
+
+  it("drops a pending sequence when a modifier is held", () => {
+    const seq = new PreviewKeySequence(PreviewMode.Doc);
+    seq.resolve(key("4"));
+    expect(seq.resolve(key("g", { metaKey: true }))).toEqual({
+      action: null,
+      preventDefault: false,
+    });
+    expect(seq.pending).toBe("");
   });
 });
