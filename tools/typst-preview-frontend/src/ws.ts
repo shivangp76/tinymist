@@ -17,6 +17,7 @@ import { WebSocketSubject, webSocket } from "rxjs/webSocket";
 import { Subject, Subscription, buffer, debounceTime, fromEvent, tap } from "rxjs";
 import { handleHtmlPreviewFrame } from "./html-preview";
 import { PreviewKeySequence } from "./preview-keybindings";
+import { LinkPreview } from "./link-preview";
 export { PreviewMode } from "typst-dom/typst-doc.mjs";
 
 // for debug propose
@@ -148,6 +149,14 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
     subsribes.push(fromEvent(window, "resize").subscribe(() => svgDoc.addViewportChange()));
 
     if (!isContentPreview) {
+      const linkPreview = new LinkPreview({
+        hookedElem,
+        scrollElem: resizeTarget,
+        kModule,
+        jump: ({ page, x, y }) => jumpToPosition(svgDoc, page, x, y),
+      });
+      subsribes.push(new Subscription(() => linkPreview.dispose()));
+
       subsribes.push(
         fromEvent(resizeTarget, "scroll")
           .pipe(debounceTime(500))

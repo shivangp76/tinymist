@@ -1,0 +1,55 @@
+#typst-link-preview {
+  position: fixed;
+  z-index: 3;
+  box-sizing: border-box;
+  overflow: hidden;
+  background-color: #ffffff;
+  border: 1px solid #b3b3b3;
+  border-radius: 6px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+#typst-link-preview .typst-link-preview-content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+#typst-link-preview canvas {
+  display: block;
+}
+
+#typst-link-preview canvas.invert-colors {
+  filter: invert(0.933333) hue-rotate(180deg);
+}
+
+/* Points at the link target on the left edge of the page. */
+#typst-link-preview .typst-link-preview-marker {
+  position: absolute;
+  left: 0;
+  width: 4px;
+  height: 1.2em;
+  margin-top: -0.2em;
+  border-radius: 0 2px 2px 0;
+  background-color: #2f7cf6;
+  pointer-events: none;
+}
+
+#typst-link-preview .typst-link-preview-message {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: #555;
+  font-size: 0.9rem;
+}
+
+#typst-link-preview .typst-link-preview-message:empty {
+  display: none;
+}
