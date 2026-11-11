@@ -982,7 +982,7 @@ impl<F: CompilerFeat, Ext: 'static> ProjectInsState<F, Ext> {
         spawn_cpu(move || {
             let evict_start = tinymist_std::time::Instant::now();
             if is_primary {
-                comemo::evict(10);
+                comemo::evict(COMEMO_MAX_AGE);
 
                 // Since all the projects share the same cache, we need to evict the cache
                 // on the primary instance for all the projects.
@@ -996,6 +996,16 @@ impl<F: CompilerFeat, Ext: 'static> ProjectInsState<F, Ext> {
         true
     }
 }
+
+/// The number of compilations after which an unused memoized result is
+/// evicted.
+///
+/// The results that are still valid for the document are hit by every
+/// compilation and never get old. The others belong to earlier states of the
+/// document and are only useful to return to these states, e.g. on undo, while
+/// each of the kept states retains a share of the layout of the whole document.
+/// The server compiles on each keystroke, so a few states suffice.
+const COMEMO_MAX_AGE: usize = 5;
 
 fn log_compile_report(rep: &CompileReport) {
     log::info!("{}", rep.message());
