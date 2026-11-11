@@ -200,6 +200,12 @@ export class LinkPreview {
     return !this.popover.classList.contains("hidden");
   }
 
+  /// The scrollable content of the popover while it is open and under the
+  /// mouse cursor, so that scrolling keys can scroll it instead of the document.
+  hoveredScrollElem(): HTMLElement | undefined {
+    return this.isOpen() && this.popover.matches(":hover") ? this.content : undefined;
+  }
+
   close() {
     this.cancelOpen();
     this.cancelClose();

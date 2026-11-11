@@ -148,14 +148,16 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
     // window.onresize = () => svgDoc.rescale();
     subsribes.push(fromEvent(window, "resize").subscribe(() => svgDoc.addViewportChange()));
 
+    let linkPreview: LinkPreview | undefined;
     if (!isContentPreview) {
-      const linkPreview = new LinkPreview({
+      linkPreview = new LinkPreview({
         hookedElem,
         scrollElem: resizeTarget,
         kModule,
         jump: ({ page, x, y }) => jumpToPosition(svgDoc, page, x, y),
       });
-      subsribes.push(new Subscription(() => linkPreview.dispose()));
+      const preview = linkPreview;
+      subsribes.push(new Subscription(() => preview.dispose()));
 
       subsribes.push(
         fromEvent(resizeTarget, "scroll")
@@ -371,6 +373,10 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
         pendingKeysElem.classList.toggle("hidden", keySequence.pending === "");
       }
 
+      // Scroll the link preview instead of the document while the mouse is
+      // over it.
+      const scrollElem = linkPreview?.hoveredScrollElem() ?? resizeTarget;
+
       switch (action) {
         case "prev":
           blurInput();
@@ -385,16 +391,16 @@ export async function wsMain({ url, previewMode, isContentPreview }: WsArgs) {
           updateNext();
           break;
         case "scrollDown":
-          resizeTarget.scrollBy({ top: + scrollDelta, behavior: "instant" });
+          scrollElem.scrollBy({ top: + scrollDelta, behavior: "instant" });
           break;
         case "scrollUp":
-          resizeTarget.scrollBy({ top: - scrollDelta, behavior: "instant" });
+          scrollElem.scrollBy({ top: - scrollDelta, behavior: "instant" });
           break;
         case "scrollPageUp":
-          resizeTarget.scrollBy({ top: - scrollDelta * 10, behavior: "smooth" });
+          scrollElem.scrollBy({ top: - scrollDelta * 10, behavior: "smooth" });
           break;
         case "scrollPageDown":
-          resizeTarget.scrollBy({ top: + scrollDelta * 10, behavior: "smooth" });
+          scrollElem.scrollBy({ top: + scrollDelta * 10, behavior: "smooth" });
           break;
         case "toggleHelp":
           blurInput();
