@@ -107,6 +107,8 @@ const HOVER_OPEN_DELAY = 500;
 const HOVER_CLOSE_DELAY = 300;
 /// Where the target position is placed in the popover, as a fraction of its height.
 const TARGET_OFFSET_RATIO = 0.3;
+/// Width of the popover border in px, see `link-preview.css`.
+const POPOVER_BORDER = 1;
 
 export interface LinkPreviewOptions {
   /// The element containing the rendered document.
@@ -279,17 +281,22 @@ export class LinkPreview {
       return;
     }
 
+    // Draw the page at the scale of the main view so that its text has the
+    // same size, and make the popover as wide as the main view's window (or
+    // as the page, if it is narrower).
     const viewport = { width: window.innerWidth, height: window.innerHeight };
+    const cssPerPt = this.mainCssPerPt(pageInfo.width);
+    const pageWidth = pageInfo.width * cssPerPt;
+    const maxWidth = Math.min(this.opts.scrollElem.clientWidth, viewport.width - 16);
     const size = {
-      width: Math.min(640, viewport.width - 16),
+      width: Math.min(pageWidth + POPOVER_BORDER * 2, maxWidth),
       height: Math.min(320, Math.max(120, viewport.height * 0.45)),
     };
-    if (size.width < 80) {
+    if (size.width < 80 || !(cssPerPt > 0)) {
       return;
     }
 
-    // Fit the page width to the popover, then render at the device resolution.
-    const cssPerPt = size.width / pageInfo.width;
+    // Render at the device resolution.
     const pixelPerPt = limitPixelPerPt(
       cssPerPt * (window.devicePixelRatio || 1),
       pageInfo.width,
@@ -331,7 +338,27 @@ export class LinkPreview {
     this.popover.style.width = `${size.width}px`;
     this.popover.style.height = `${size.height}px`;
     this.popover.classList.remove("hidden");
+    // A page zoomed wider than the window can be scrolled sideways; show the
+    // target near the left edge then.
+    const overflowsX = pageWidth > size.width - POPOVER_BORDER * 2;
+    this.content.classList.toggle("scroll-x", overflowsX);
     this.content.scrollTop = target.y * cssPerPt - size.height * TARGET_OFFSET_RATIO;
-    this.content.scrollLeft = 0;
+    this.content.scrollLeft = overflowsX ? target.x * cssPerPt - size.width * 0.1 : 0;
+  }
+
+  /// CSS px per pt of the pages in the main view. Falls back to fitting a
+  /// `pageWidth` pt wide page to the main view's window.
+  private mainCssPerPt(pageWidth: number): number {
+    const svg = this.opts.hookedElem.firstElementChild;
+    if (svg instanceof SVGSVGElement) {
+      const svgWidth = Number.parseFloat(
+        svg.getAttribute("data-width") || svg.getAttribute("width") || "",
+      );
+      const renderedWidth = svg.getBoundingClientRect().width;
+      if (svgWidth > 0 && renderedWidth > 0) {
+        return renderedWidth / svgWidth;
+      }
+    }
+    return this.opts.scrollElem.clientWidth / pageWidth;
   }
 }

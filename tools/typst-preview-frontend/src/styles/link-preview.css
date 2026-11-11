@@ -19,6 +19,10 @@
   overscroll-behavior: contain;
 }
 
+#typst-link-preview .typst-link-preview-content.scroll-x {
+  overflow-x: auto;
+}
+
 #typst-link-preview canvas {
   display: block;
 }
