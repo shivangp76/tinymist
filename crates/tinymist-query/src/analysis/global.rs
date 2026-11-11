@@ -15,7 +15,7 @@ use tinymist_analysis::docs::DocString;
 use tinymist_analysis::stats::{AllocStats, QueryStatReportEntry};
 use tinymist_analysis::syntax::classify_def_loosely;
 use tinymist_analysis::ty::{BuiltinTy, InsTy, term_value};
-use tinymist_analysis::{analyze_expr_, analyze_import_};
+use tinymist_analysis::{analyze_expr_, analyze_import_value};
 use tinymist_lint::{KnownIssues, LintInfo};
 use tinymist_project::{LspComputeGraph, LspWorld, TaskWhen};
 use tinymist_std::hash::{FxDashMap, hash128};
@@ -178,6 +178,7 @@ impl Analysis {
         self.caches.def_signatures.clear();
         self.caches.static_signatures.clear();
         self.caches.terms.clear();
+        self.caches.import_traces.clear();
         *self.local_packages.lock() = OnceLock::default();
         self.tokens_caches.lock().clear();
         self.analysis_rev_cache.lock().clear();
@@ -1351,13 +1352,65 @@ impl SharedContext {
             return (Some(v), None);
         }
         let token = &self.analysis.workers.import;
-        token.enter(|| analyze_import_(self.world(), source))
+        token.enter(|| {
+            let values = self.trace_import_source(source, || analyze_expr_(self.world(), source));
+            let Some((value, _)) = values.into_iter().next() else {
+                return (None, None);
+            };
+
+            analyze_import_value(self.world(), source.span(), value)
+        })
     }
 
     /// Try to load a module from the current source file.
     pub fn analyze_expr(&self, source: &SyntaxNode) -> EcoVec<(Value, Option<Styles>)> {
         let token = &self.analysis.workers.expression;
         token.enter(|| analyze_expr_(self.world(), source))
+    }
+
+    /// Traces the values of an import source expression.
+    ///
+    /// A trace compiles the whole main document. The values observed at an
+    /// import site in a package are reused across revisions, because a package
+    /// source is immutable. Otherwise, every edit would trace (and memoize) a
+    /// full compilation again for each such site.
+    pub fn analyze_import_source(&self, source: &SyntaxNode) -> EcoVec<(Value, Option<Styles>)> {
+        self.trace_import_source(source, || self.analyze_expr(source))
+    }
+
+    /// Gets the values at an import source expression, which are traced by
+    /// `trace` unless a previous trace of the site can be reused.
+    fn trace_import_source(
+        &self,
+        source: &SyntaxNode,
+        trace: impl FnOnce() -> EcoVec<(Value, Option<Styles>)>,
+    ) -> EcoVec<(Value, Option<Styles>)> {
+        let key = source
+            .span()
+            .id()
+            .filter(|fid| WorkspaceResolver::is_package_file(*fid))
+            .and_then(|fid| self.source_by_id(fid).ok())
+            .map(|src| hash128(&(&src, source.span())));
+        let Some(key) = key else {
+            return trace();
+        };
+
+        let revision = self.world().revision().get();
+        let traces = &self.analysis.caches.import_traces;
+        if let Some(trace) = traces.get(&key)
+            && trace.is_fresh(revision)
+        {
+            return trace.values.clone();
+        }
+
+        let values = trace();
+        let trace = ImportTrace {
+            values: values.clone(),
+            revision,
+        };
+        traces.insert(key, trace);
+
+        values
     }
 
     /// Get bib info of a source file.
@@ -1668,6 +1721,35 @@ mod incr_cache_tests {
     }
 }
 
+#[cfg(test)]
+mod import_trace_tests {
+    use super::*;
+
+    fn trace(values: EcoVec<(Value, Option<Styles>)>) -> ImportTrace {
+        ImportTrace {
+            values,
+            revision: 4,
+        }
+    }
+
+    #[test]
+    fn traced_values_are_reused_across_revisions() {
+        let trace = trace(eco_vec![(Value::None, None)]);
+        assert!(trace.is_fresh(4));
+        assert!(trace.is_fresh(4 + ImportTrace::EMPTY_TTL * 100));
+    }
+
+    #[test]
+    fn empty_trace_is_traced_again_later() {
+        let trace = trace(eco_vec![]);
+        assert!(trace.is_fresh(4));
+        assert!(trace.is_fresh(3 + ImportTrace::EMPTY_TTL));
+        assert!(!trace.is_fresh(4 + ImportTrace::EMPTY_TTL));
+        // A project with an earlier revision shares the cache.
+        assert!(trace.is_fresh(1));
+    }
+}
+
 #[derive(Clone)]
 struct CacheMap<T> {
     m: Arc<FxDashMap<u128, (u64, T)>>,
@@ -1723,6 +1805,31 @@ pub struct AnalysisGlobalCaches {
     signatures: CacheMap<DeferredCompute<Option<Signature>>>,
     docstrings: CacheMap<DeferredCompute<Option<Arc<DocString>>>>,
     terms: CacheMap<(Value, Ty)>,
+    /// The values traced at import sites in packages.
+    import_traces: Arc<FxDashMap<u128, ImportTrace>>,
+}
+
+/// The values traced at an import site in a package.
+struct ImportTrace {
+    /// The values observed at the site.
+    values: EcoVec<(Value, Option<Styles>)>,
+    /// The revision of the world that was traced.
+    revision: usize,
+}
+
+impl ImportTrace {
+    /// The number of revisions to wait before tracing a site again that had no
+    /// value.
+    const EMPTY_TTL: usize = 32;
+
+    /// Whether the trace can be used at the `revision`.
+    ///
+    /// A site has no value until the main document evaluates it, e.g. an
+    /// import in a function that is not called yet, so an empty trace is only
+    /// trusted for a while.
+    fn is_fresh(&self, revision: usize) -> bool {
+        !self.values.is_empty() || revision.saturating_sub(self.revision) < Self::EMPTY_TTL
+    }
 }
 
 /// A local (lsp request spanned) cache for all level of analysis results of a
