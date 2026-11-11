@@ -69,6 +69,17 @@ pub fn analyze_import_(world: &dyn World, source: &SyntaxNode) -> (Option<Value>
     let Some((source, _)) = analyze_expr_(world, source).into_iter().next() else {
         return (None, None);
     };
+
+    analyze_import_value(world, source_span, source)
+}
+
+/// Try to load a module from the value of an import source, which is at the
+/// `source_span`.
+pub fn analyze_import_value(
+    world: &dyn World,
+    source_span: Span,
+    source: Value,
+) -> (Option<Value>, Option<Value>) {
     if source.scope().is_some() {
         return (Some(source.clone()), Some(source));
     }
